@@ -26,8 +26,8 @@ export default function RegionPopup({ open, x, y, region, onClose, imageSrc, esp
     const CARD_H = 260;
     let px = x;
     let py = y;
-    let ox = "left" as const;
-    let oy = "top" as const;
+    let ox: "left" | "right" = "left";
+    let oy: "top" | "bottom" = "top";
     if (px + CARD_W > containerWidth) {
       px = Math.max(12, containerWidth - CARD_W - 12);
       ox = "right" as const;
