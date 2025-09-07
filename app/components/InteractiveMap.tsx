@@ -117,7 +117,7 @@ export default function InteractiveMap() {
 
         // Si el SVG contiene múltiples paths, agregamos resaltado directo por path
         const allPaths = Array.from(svg.querySelectorAll("path"));
-        let detachFns: Array<() => void> = [];
+        const detachFns: Array<() => void> = [];
         if (allPaths.length > 1) {
           // Estilos base sin trazos visibles para evitar líneas negras entre regiones
           const ACTIVE_STROKE_W = "1.1";
