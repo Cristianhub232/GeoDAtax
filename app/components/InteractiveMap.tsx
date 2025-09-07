@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import RegionDrawer from "./RegionDrawer";
+import { useEffect, useMemo, useRef, useState } from "react";
+import RegionPopup from "./RegionPopup";
 import type { RegionInfo } from "../data/regions";
 import { resolveRegionByColor, REGIONS, colorDistance } from "../data/regions";
 
@@ -27,8 +27,10 @@ export default function InteractiveMap() {
   const clickAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastPlayedKeyRef = useRef<string | null>(null);
   const lastPlayTsRef = useRef<number>(0);
-  const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
   const [selectedRegion, setSelectedRegion] = useState<RegionInfo | null>(null);
+  const [popupOpen, setPopupOpen] = useState<boolean>(false);
+  const [popupPos, setPopupPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [containerSize, setContainerSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
 
   useEffect(() => {
     // Preferencia de sonido persistida
@@ -239,7 +241,28 @@ export default function InteractiveMap() {
         const handlePathClick = (ev: Event) => {
           const bbox = svg.getBoundingClientRect();
           const pe = ev as PointerEvent;
-          selectRegionAtClient(pe.clientX, pe.clientY, bbox);
+          const target = ev.currentTarget as SVGPathElement | null;
+          // Si comparte color con Capital (#098DD6), disambiguar por tamaño del path (islas vs. continente)
+          if (target) {
+            const attrFill = target.getAttribute("fill") || "";
+            if (/^#?098dd6$/i.test(attrFill)) {
+              try {
+                const pb = (target as unknown as SVGGraphicsElement).getBBox();
+                const area = pb.width * pb.height;
+                const total = vbW * vbH;
+                const ratio = area / total;
+                const isLikelyInsular = ratio > 0 && ratio < 0.0015; // pequeños polígonos (islas)
+                if (isLikelyInsular) {
+                  target.dataset.regionId = "insular";
+                } else {
+                  target.dataset.regionId = "capital";
+                }
+              } catch {
+                // fallback sin dataset
+              }
+            }
+          }
+          selectRegionAtClient(pe.clientX, pe.clientY, bbox, target || undefined);
         };
         if (allPaths.length > 1) {
           allPaths.forEach((p) => {
@@ -347,7 +370,7 @@ export default function InteractiveMap() {
     }
   };
 
-  const selectRegionAtClient = (clientX: number, clientY: number, svgBBox: DOMRect) => {
+  const selectRegionAtClient = (clientX: number, clientY: number, svgBBox: DOMRect, pathEl?: SVGPathElement) => {
     const raster = rasterCtxRef.current;
     if (!raster) return;
     const { w: vbW, h: vbH } = viewBoxRef.current;
@@ -359,7 +382,14 @@ export default function InteractiveMap() {
     const data = raster.getImageData(Math.max(0, Math.min(vbW - 1, sx)), Math.max(0, Math.min(vbH - 1, sy)), 1, 1).data;
     const r = data[0], g = data[1], b = data[2], a = data[3];
     if (a === 0 || isBackgroundLike(r, g, b)) return;
-    const region = resolveRegionByColor({ r, g, b }, 48);
+    // Priorizar mapeo explícito por path si existe
+    let region: RegionInfo | null = null;
+    if (pathEl?.dataset.regionId) {
+      region = REGIONS.find((rg) => rg.id === pathEl.dataset.regionId) || null;
+    }
+    if (!region) {
+      region = resolveRegionByColor({ r, g, b }, 48);
+    }
 
     // Debug log detallado: color exacto y mejor coincidencia
     const toHex = (n: number) => n.toString(16).padStart(2, "0").toUpperCase();
@@ -384,7 +414,13 @@ export default function InteractiveMap() {
     });
     if (region) {
       setSelectedRegion(region);
-      setDrawerOpen(true);
+      // Posicionar popup relativo al contenedor
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      const baseLeft = containerRect ? containerRect.left : 0;
+      const baseTop = containerRect ? containerRect.top : 0;
+      setPopupPos({ x: Math.floor(clientX - baseLeft), y: Math.floor(clientY - baseTop) });
+      setContainerSize({ w: Math.floor(containerRect?.width || 0), h: Math.floor(containerRect?.height || 0) });
+      setPopupOpen(true);
       playClickSound();
     }
   };
@@ -557,14 +593,17 @@ export default function InteractiveMap() {
       aria-busy={!ready}
     >
       <canvas ref={overlayCanvasRef} style={{ position: "absolute", inset: 0, pointerEvents: "none" }} />
-      <RegionDrawer
-        open={drawerOpen}
+      <RegionPopup
+        open={popupOpen}
+        x={popupPos.x}
+        y={popupPos.y}
         region={selectedRegion}
-        onClose={() => setDrawerOpen(false)}
-        onSubmit={(fd) => {
-          console.log("submit region", selectedRegion?.id, Object.fromEntries(fd.entries()));
-          setDrawerOpen(false);
-        }}
+        onClose={() => setPopupOpen(false)}
+        imageSrc={useMemo(() => (selectedRegion?.id === "nor-oriental" ? "/NOR ORIENTAL.jpg" : undefined), [selectedRegion])}
+        especiales={useMemo(() => Math.floor(50 + Math.random() * 450), [selectedRegion])}
+        ordinarios={useMemo(() => Math.floor(500 + Math.random() * 5500), [selectedRegion])}
+        containerWidth={containerSize.w}
+        containerHeight={containerSize.h}
       />
       <button
         onClick={toggleSound}
