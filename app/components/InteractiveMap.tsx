@@ -24,6 +24,7 @@ export default function InteractiveMap() {
   const colorMaskCacheRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const clickAudioRef = useRef<HTMLAudioElement | null>(null);
   const lastPlayedKeyRef = useRef<string | null>(null);
   const lastPlayTsRef = useRef<number>(0);
   const [drawerOpen, setDrawerOpen] = useState<boolean>(false);
@@ -118,35 +119,43 @@ export default function InteractiveMap() {
         const allPaths = Array.from(svg.querySelectorAll("path"));
         let detachFns: Array<() => void> = [];
         if (allPaths.length > 1) {
-          // Estilos base + bordes negros entre regiones
-          const BASE_STROKE_W = "1.25"; // px debido a non-scaling-stroke
-          const ACTIVE_STROKE_W = "2";
+          // Estilos base sin trazos visibles para evitar líneas negras entre regiones
+          const ACTIVE_STROKE_W = "1.1";
           allPaths.forEach((p) => {
             const el = p as SVGPathElement;
             el.style.transition = "filter .15s ease, opacity .15s ease, stroke-width .15s ease";
             el.style.cursor = "pointer";
             el.setAttribute("vector-effect", "non-scaling-stroke");
-            el.setAttribute("stroke", "#000");
-            el.setAttribute("stroke-opacity", "0.65");
-            el.setAttribute("stroke-linejoin", "round");
-            el.setAttribute("stroke-linecap", "round");
-            el.setAttribute("stroke-width", BASE_STROKE_W);
+            // No aplicar stroke por defecto
+            el.removeAttribute("stroke");
+            el.removeAttribute("stroke-opacity");
+            el.removeAttribute("stroke-width");
           });
 
           const dimOthers = (active: SVGPathElement | null) => {
             allPaths.forEach((p) => {
               const el = p as SVGPathElement;
               if (active && el !== active) {
-                el.style.opacity = "0.35";
+                el.style.opacity = "0.6";
                 el.style.filter = "none";
-                el.setAttribute("stroke-width", BASE_STROKE_W);
+                // Asegurar que no queden trazos en los no activos
+                el.removeAttribute("stroke");
+                el.removeAttribute("stroke-opacity");
+                el.removeAttribute("stroke-width");
               } else {
                 el.style.opacity = "1";
+                // Sin trazo por defecto
+                el.removeAttribute("stroke");
+                el.removeAttribute("stroke-opacity");
+                el.removeAttribute("stroke-width");
               }
             });
             if (active) {
-              active.style.filter = "drop-shadow(0 0 14px rgba(0,0,0,0.6)) brightness(1.25) saturate(1.4)";
+              active.style.filter = "drop-shadow(0 0 12px rgba(0,0,0,0.5))";
               active.setAttribute("stroke", "#000");
+              active.setAttribute("stroke-opacity", "0.35");
+              active.setAttribute("stroke-linejoin", "round");
+              active.setAttribute("stroke-linecap", "round");
               active.setAttribute("stroke-width", ACTIVE_STROKE_W);
             }
           };
@@ -160,8 +169,10 @@ export default function InteractiveMap() {
               const el = p as SVGPathElement;
               el.style.opacity = "1";
               el.style.filter = "none";
-              el.setAttribute("stroke", "#000");
-              el.setAttribute("stroke-width", BASE_STROKE_W);
+              // Quitar cualquier trazo para evitar líneas visuales entre regiones
+              el.removeAttribute("stroke");
+              el.removeAttribute("stroke-opacity");
+              el.removeAttribute("stroke-width");
             });
           };
 
@@ -374,6 +385,7 @@ export default function InteractiveMap() {
     if (region) {
       setSelectedRegion(region);
       setDrawerOpen(true);
+      playClickSound();
     }
   };
 
@@ -437,6 +449,23 @@ export default function InteractiveMap() {
     } catch {
       // Ignorar errores de reproducción
     }
+  };
+
+  // Sonido de click al seleccionar región
+  const playClickSound = () => {
+    if (!soundEnabled) return;
+    try {
+      if (!clickAudioRef.current) {
+        const audio = new Audio("/switch-sound.mp3");
+        audio.preload = "auto";
+        audio.volume = 0.3;
+        clickAudioRef.current = audio;
+      }
+      const a = clickAudioRef.current;
+      if (!a) return;
+      a.currentTime = 0;
+      void a.play().catch(() => {});
+    } catch {}
   };
 
   const toggleSound = () => {
